@@ -239,8 +239,8 @@ class ConfigurationParer():
 
         cfg.constituent_vocab = os.path.join(cfg.constituent_model_dir, "vocabulary.pickle")
         cfg.relation_vocab = os.path.join(cfg.relation_model_dir, "vocabulary.pickle")
-        cfg.constituent_model_path = os.path.join(cfg.constituent_model_dir, 'best_model')
-        cfg.relation_model_path = os.path.join(cfg.relation_model_dir, 'best_model')
+        cfg.constituent_model_path = os.path.join(cfg.constituent_model_dir, 'ce_model')
+        cfg.relation_model_path = os.path.join(cfg.relation_model_dir, 'cl_model')
 
         if "carb" in cfg.test_file:
             cfg.separate_threshold = 1.25
@@ -256,7 +256,7 @@ class ConfigurationParer():
 
         if getattr(cfg, 'log_file', None) is not None:
             cfg.log_file = os.path.join(cfg.save_dir, cfg.log_file)
-            assert not os.path.exists(cfg.log_file), f"log file {cfg.log_file} exists !!!"
+            # assert not os.path.exists(cfg.log_file), f"log file {cfg.log_file} exists !!!"
 
         init_logger(root_log_level=getattr(cfg, 'root_log_level', logging.DEBUG),
                     console_log_level=getattr(cfg, 'console_log_level', logging.NOTSET),

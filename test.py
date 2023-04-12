@@ -73,8 +73,8 @@ def test(cfg, dataset, ent_model, rel_model):
     rel_model.zero_grad()
 
     all_outputs = []
-    for _, batch in dataset.get_batch('test', cfg.test_batch_size, None):
-        # print("{} processed".format(idx+1))
+    for idx, batch in dataset.get_batch('test', cfg.test_batch_size, None):
+        print("{} processed".format(idx+1))
         ent_model.eval()
         rel_model.eval()
         with torch.no_grad():
@@ -176,6 +176,8 @@ def main():
         state_dict = torch.load(open(cfg.constituent_model_path, 'rb'), map_location=lambda storage, loc: storage)
         ent_model.load_state_dict(state_dict)
         print("constituent model loaded")
+    else:
+        raise FileNotFoundError
     if os.path.exists(cfg.relation_model_path):
         state_dict = torch.load(open(cfg.relation_model_path, 'rb'), map_location=lambda storage, loc: storage)
         rel_model.load_state_dict(state_dict)
