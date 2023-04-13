@@ -117,8 +117,6 @@ def process(fin, fout, tokenizer, ent_rel_file):
     ent_rel_id = ent_rel_file["id"]
     sentId = 0
     for line in fin:
-        if line.strip() == "--q":
-            break
         sentId += 1
         exts = get_sentence_dicts(line, sentId)
         for ext in exts:
@@ -280,33 +278,6 @@ def main():
     else:
         raise NotImplemented(f"{cfg.embedding_model} is not supported")
 
-    # input lines
-    logger.info("Reading input")
-    formatted = io.StringIO()
-    # process to json
-    process(sys.stdin, formatted, tokenizer, ent_rel_file)
-    formatted.seek(0)
-    oie_test_reader = OIE4ReaderForEntRelDecoding(formatted, False, max_len)
-
-    # define dataset
-    oie_dataset = Dataset("OIE4")
-    oie_dataset.add_instance("test", test_instance, oie_test_reader, is_count=True, is_train=False)
-
-    min_count = {"tokens": 1}
-    no_pad_namespace = ["ent_rel_id"]
-    no_unk_namespace = ["ent_rel_id"]
-    contain_pad_namespace = {"wordpiece": tokenizer.pad_token}
-    contain_unk_namespace = {"wordpiece": tokenizer.unk_token}
-    oie_dataset.build_dataset(vocab=vocab_ent,
-                              counter=counter,
-                              min_count=min_count,
-                              pretrained_vocab=pretrained_vocab,
-                              no_pad_namespace=no_pad_namespace,
-                              no_unk_namespace=no_unk_namespace,
-                              contain_pad_namespace=contain_pad_namespace,
-                              contain_unk_namespace=contain_unk_namespace)
-    wo_padding_namespace = ["separate_positions", "span2ent", "span2rel"]
-    oie_dataset.set_wo_padding_namespace(wo_padding_namespace=wo_padding_namespace)
 
     vocab_ent = Vocabulary.load(cfg.constituent_vocab)
     vocab_rel = Vocabulary.load(cfg.relation_vocab)
@@ -333,7 +304,47 @@ def main():
         ent_model.cuda(device=cfg.device)
         rel_model.cuda(device=cfg.device)
 
-    run_cli(cfg, oie_dataset, ent_model, rel_model)
+    raw = io.StringIO()
+    batch_read = 0
+    batch_size = cfg.test_batch_size
+    while True:
+        if sys.stdin.closed:
+            break
+        for line in sys.stdin:
+            raw.write(line)
+            batch_read += 1
+            if batch_read >= batch_size:
+                break
+        # input lines
+        logger.info("Reading input")
+        # process to json
+        raw.seek(0)
+        formatted = io.StringIO()
+        process(raw, formatted, tokenizer, ent_rel_file)
+        formatted.seek(0)
+        oie_test_reader = OIE4ReaderForEntRelDecoding(formatted, False, max_len)
+
+        # define dataset
+        oie_dataset = Dataset("OIE4")
+        oie_dataset.add_instance("test", test_instance, oie_test_reader, is_count=True, is_train=False)
+
+        min_count = {"tokens": 1}
+        no_pad_namespace = ["ent_rel_id"]
+        no_unk_namespace = ["ent_rel_id"]
+        contain_pad_namespace = {"wordpiece": tokenizer.pad_token}
+        contain_unk_namespace = {"wordpiece": tokenizer.unk_token}
+        oie_dataset.build_dataset(vocab=vocab_ent,
+                                  counter=counter,
+                                  min_count=min_count,
+                                  pretrained_vocab=pretrained_vocab,
+                                  no_pad_namespace=no_pad_namespace,
+                                  no_unk_namespace=no_unk_namespace,
+                                  contain_pad_namespace=contain_pad_namespace,
+                                  contain_unk_namespace=contain_unk_namespace)
+        wo_padding_namespace = ["separate_positions", "span2ent", "span2rel"]
+        oie_dataset.set_wo_padding_namespace(wo_padding_namespace=wo_padding_namespace)
+        run_cli(cfg, oie_dataset, ent_model, rel_model)
+        formatted.close()
 
 
 if __name__ == '__main__':
