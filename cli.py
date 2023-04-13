@@ -30,18 +30,9 @@ def read_conjunctive_sentences(args):
     return sent2conj
 
 
-def get_conj_free_sentence_dicts(sentence, sent_to_conj, sent_id):
+def get_sentence_dicts(sentence, sent_id):
     flat_extractions_list = []
     sentence = sentence.replace('\n', '')
-    if sentence in list(sent2conj.keys()):
-        for s in sent_to_conj[sentence]:
-            sentence_and_extractions_dict = {
-                "sentence": s + " [unused1] [unused2] [unused3] [unused4] [unused5] [unused6]",
-                "sentId": sent_id, "entityMentions": list(),
-                "relationMentions": list(), "extractionMentions": list()}
-            flat_extractions_list.append(sentence_and_extractions_dict)
-        return flat_extractions_list
-
     return [{
         "sentence": sentence + " [unused1] [unused2] [unused3] [unused4] [unused5] [unused6]",
         "sentId": sent_id, "entityMentions": list(),
@@ -126,13 +117,16 @@ def process(fin, fout, tokenizer, ent_rel_file):
     ent_rel_id = ent_rel_file["id"]
     sentId = 0
     for line in fin:
+        if line.strip() == "--q":
+            break
         sentId += 1
-        ext = line.strip()
-        ext_dict = tokenize_sentences(ext, tokenizer)
-        add_joint_label(ext_dict, ent_rel_id)
-        extractions_list.append(ext_dict)
-        fout.write(json.dumps(ext_dict))
-        fout.write('\n')
+        exts = get_sentence_dicts(line, sentId)
+        for ext in exts:
+            ext_dict = tokenize_sentences(ext, tokenizer)
+            add_joint_label(ext_dict, ent_rel_id)
+            extractions_list.append(ext_dict)
+            fout.write(json.dumps(ext_dict))
+            fout.write('\n')
 
 
 
@@ -291,7 +285,7 @@ def main():
     formatted = io.StringIO()
     # process to json
     process(sys.stdin, formatted, tokenizer, ent_rel_file)
-
+    formatted.seek(0)
     oie_test_reader = OIE4ReaderForEntRelDecoding(formatted, False, max_len)
 
     # define dataset

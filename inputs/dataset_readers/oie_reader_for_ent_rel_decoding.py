@@ -81,6 +81,7 @@ class OIE4ReaderForEntRelDecoding():
             sentence.update(results)
 
             yield sentence
+        self.file.seek(0)
 
     def get_tokens(self, line):
         """This function splits text into tokens
