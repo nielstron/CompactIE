@@ -1,3 +1,143 @@
+import io
+#### from data/process.py
+
+
+import json
+import argparse
+import sys
+from collections import defaultdict
+from transformers import AutoTokenizer
+
+
+def read_conjunctive_sentences(args):
+    with open(args.conjunctions_file, 'r') as fin:
+        sent = True
+        sent2conj = defaultdict(list)
+        conj2sent = dict()
+        currentSentText = ''
+        for line in fin:
+            if line == '\n':
+                sent = True
+                continue
+            if sent:
+                currentSentText = line.replace('\n', '')
+                sent = False
+            else:
+                conj_sent = line.replace('\n', '')
+                sent2conj[currentSentText].append(conj_sent)
+                conj2sent[conj_sent] = currentSentText
+
+    return sent2conj
+
+
+def get_conj_free_sentence_dicts(sentence, sent_to_conj, sent_id):
+    flat_extractions_list = []
+    sentence = sentence.replace('\n', '')
+    if sentence in list(sent2conj.keys()):
+        for s in sent_to_conj[sentence]:
+            sentence_and_extractions_dict = {
+                "sentence": s + " [unused1] [unused2] [unused3] [unused4] [unused5] [unused6]",
+                "sentId": sent_id, "entityMentions": list(),
+                "relationMentions": list(), "extractionMentions": list()}
+            flat_extractions_list.append(sentence_and_extractions_dict)
+        return flat_extractions_list
+
+    return [{
+        "sentence": sentence + " [unused1] [unused2] [unused3] [unused4] [unused5] [unused6]",
+        "sentId": sent_id, "entityMentions": list(),
+        "relationMentions": list(), "extractionMentions": list()}]
+
+
+def add_joint_label(ext, ent_rel_id):
+    """add_joint_label add joint labels for sentences
+    """
+
+    none_id = ent_rel_id['None']
+    sentence_length = len(ext['sentText'].split(' '))
+    entity_label_matrix = [[none_id for j in range(sentence_length)] for i in range(sentence_length)]
+    relation_label_matrix = [[none_id for j in range(sentence_length)] for i in range(sentence_length)]
+    label_matrix = [[none_id for j in range(sentence_length)] for i in range(sentence_length)]
+    ent2offset = {}
+    for ent in ext['entityMentions']:
+        ent2offset[ent['emId']] = ent['span_ids']
+        try:
+            for i in ent['span_ids']:
+                for j in ent['span_ids']:
+                    entity_label_matrix[i][j] = ent_rel_id[ent['label']]
+        except:
+            print("span ids: ", sentence_length, ent['span_ids'], ext)
+            sys.exit(1)
+    ext['entityLabelMatrix'] = entity_label_matrix
+    for rel in ext['relationMentions']:
+        arg1_span = ent2offset[rel['arg1']['emId']]
+        arg2_span = ent2offset[rel['arg2']['emId']]
+
+        for i in arg1_span:
+            for j in arg2_span:
+                # to be consistent with the linking model
+                relation_label_matrix[i][j] = ent_rel_id[rel['label']] - 2
+                relation_label_matrix[j][i] = ent_rel_id[rel['label']] - 2
+                label_matrix[i][j] = ent_rel_id[rel['label']]
+                label_matrix[j][i] = ent_rel_id[rel['label']]
+    ext['relationLabelMatrix'] = relation_label_matrix
+    ext['jointLabelMatrix'] = label_matrix
+
+
+def tokenize_sentences(ext, tokenizer):
+    cls = tokenizer.cls_token
+    sep = tokenizer.sep_token
+    wordpiece_tokens = [cls]
+
+    wordpiece_tokens_index = []
+    cur_index = len(wordpiece_tokens)
+    # for token in ext['sentText'].split(' '):
+    for token in ext['sentence'].split(' '):
+        tokenized_token = list(tokenizer.tokenize(token))
+        wordpiece_tokens.extend(tokenized_token)
+        wordpiece_tokens_index.append([cur_index, cur_index + len(tokenized_token)])
+        cur_index += len(tokenized_token)
+    wordpiece_tokens.append(sep)
+
+    wordpiece_segment_ids = [1] * (len(wordpiece_tokens))
+    return {
+        'sentId': ext['sentId'],
+        'sentText': ext['sentence'],
+        'entityMentions': ext['entityMentions'],
+        'relationMentions': ext['relationMentions'],
+        'extractionMentions': ext['extractionMentions'],
+        'wordpieceSentText': " ".join(wordpiece_tokens),
+        'wordpieceTokensIndex': wordpiece_tokens_index,
+        'wordpieceSegmentIds': wordpiece_segment_ids
+    }
+
+
+def write_dataset_to_file(dataset, dataset_path):
+    print("dataset: {}, size: {}".format(dataset_path, len(dataset)))
+    with open(dataset_path, 'w', encoding='utf-8') as fout:
+        for idx, ext in enumerate(dataset):
+            fout.write(json.dumps(ext))
+            if idx != len(dataset) - 1:
+                fout.write('\n')
+
+
+def process(fin, fout, tokenizer, ent_rel_file):
+    extractions_list = []
+
+    ent_rel_id = ent_rel_file["id"]
+    sentId = 0
+    for line in fin:
+        sentId += 1
+        ext = line.strip()
+        ext_dict = tokenize_sentences(ext, tokenizer)
+        add_joint_label(ext_dict, ent_rel_id)
+        extractions_list.append(ext_dict)
+        fout.write(json.dumps(ext_dict))
+        fout.write('\n')
+
+
+
+#### from test.py
+
 import sys
 from collections import defaultdict
 import json
@@ -69,20 +209,20 @@ def step(cfg, ent_model, rel_model, batch_inputs, main_vocab, device):
 
 
 def run_cli(cfg, dataset, ent_model, rel_model):
-    logger.info("CLI starting...")
     ent_model.zero_grad()
     rel_model.zero_grad()
 
     all_outputs = []
-    while True:
-        # TODO transform input line to batch
-        input_sent = input()
-        ent_model.eval()
-        rel_model.eval()
+    # TODO transform input line to batch
+    ent_model.eval()
+    rel_model.eval()
+    for idx, batch in dataset.get_batch('test', cfg.test_batch_size, None):
+        print("{} processed".format(idx+1))
         with torch.no_grad():
             batch_outputs = step(cfg, ent_model, rel_model, batch, dataset.vocab, cfg.device)
-        test_output_file = sys.stdout
-        print_extractions_allennlp_format(cfg, all_outputs, test_output_file, dataset.vocab)
+        all_outputs.extend(batch_outputs)
+    test_output_file = sys.stdout
+    print_extractions_allennlp_format(cfg, all_outputs, test_output_file, dataset.vocab)
 
 
 def main():
@@ -143,7 +283,16 @@ def main():
         tokenizer = BertTokenizer.from_pretrained(cfg.pretrained_model_name)
         logger.info("Load {} tokenizer successfully.".format(cfg.pretrained_model_name))
         pretrained_vocab['wordpiece'] = tokenizer.get_vocab()
-    oie_test_reader = OIE4ReaderForEntRelDecoding(cfg.test_file, False, max_len)
+    else:
+        raise NotImplemented(f"{cfg.embedding_model} is not supported")
+
+    # input lines
+    logger.info("Reading input")
+    formatted = io.StringIO()
+    # process to json
+    process(sys.stdin, formatted, tokenizer, ent_rel_file)
+
+    oie_test_reader = OIE4ReaderForEntRelDecoding(formatted, False, max_len)
 
     # define dataset
     oie_dataset = Dataset("OIE4")

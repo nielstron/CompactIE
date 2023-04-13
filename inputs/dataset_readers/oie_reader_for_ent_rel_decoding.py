@@ -20,7 +20,7 @@ class OIE4ReaderForEntRelDecoding():
     separate decoding on oie dataset.
     """
 
-    def __init__(self, file_path, is_test=False, max_len=dict()):
+    def __init__(self, file, is_test=False, max_len=dict()):
         """This function defines file path and some settings
 
         Arguments:
@@ -31,7 +31,7 @@ class OIE4ReaderForEntRelDecoding():
             max_len {dict} -- max length for some namespace (default: {dict()})
         """
 
-        self.file_path = file_path
+        self.file = file
         self.is_test = is_test
         self.max_len = dict(max_len)
         self.seq_lens = defaultdict(list)
@@ -40,48 +40,47 @@ class OIE4ReaderForEntRelDecoding():
         """Generator function
         """
 
-        with open(self.file_path, 'r') as fin:
-            for line in fin:
-                line = json.loads(line)
-                sentence = {}
+        for line in self.file:
+            line = json.loads(line)
+            sentence = {}
 
-                state, results = self.get_tokens(line)
-                self.seq_lens['tokens'].append(len(results['tokens']))
-                if not state or ('tokens' in self.max_len and len(results['tokens']) > self.max_len['tokens']
-                                 and not self.is_test):
-                    if not self.is_test:
-                        continue
-                sentence.update(results)
-
-                state, results = self.get_wordpiece_tokens(line)
-                self.seq_lens['wordpiece_tokens'].append(len(results['wordpiece_tokens']))
-                if not state or ('wordpiece_tokens' in self.max_len
-                                 and len(results['wordpiece_tokens']) > self.max_len['wordpiece_tokens']):
-                    if not self.is_test:
-                        continue
-                sentence.update(results)
-
-                if len(sentence['tokens']) != len(sentence['wordpiece_tokens_index']):
-                    logger.error(
-                        "sentence id: {} wordpiece_tokens_index length is not equal to tokens.".format(line['sentId']))
+            state, results = self.get_tokens(line)
+            self.seq_lens['tokens'].append(len(results['tokens']))
+            if not state or ('tokens' in self.max_len and len(results['tokens']) > self.max_len['tokens']
+                             and not self.is_test):
+                if not self.is_test:
                     continue
+            sentence.update(results)
 
-                if len(sentence['wordpiece_tokens']) != len(sentence['wordpiece_segment_ids']):
-                    logger.error(
-                        "sentence id: {} wordpiece_tokens length is not equal to wordpiece_segment_ids.".
-                            format(line['sentId']))
+            state, results = self.get_wordpiece_tokens(line)
+            self.seq_lens['wordpiece_tokens'].append(len(results['wordpiece_tokens']))
+            if not state or ('wordpiece_tokens' in self.max_len
+                             and len(results['wordpiece_tokens']) > self.max_len['wordpiece_tokens']):
+                if not self.is_test:
                     continue
+            sentence.update(results)
 
-                state, results = self.get_entity_relation_label(line, len(sentence['tokens']))
-                for key, result in results.items():
-                    self.seq_lens[key].append(len(result))
-                    if key in self.max_len and len(result) > self.max_len[key]:
-                        state = False
-                if not state:
-                    continue
-                sentence.update(results)
+            if len(sentence['tokens']) != len(sentence['wordpiece_tokens_index']):
+                logger.error(
+                    "sentence id: {} wordpiece_tokens_index length is not equal to tokens.".format(line['sentId']))
+                continue
 
-                yield sentence
+            if len(sentence['wordpiece_tokens']) != len(sentence['wordpiece_segment_ids']):
+                logger.error(
+                    "sentence id: {} wordpiece_tokens length is not equal to wordpiece_segment_ids.".
+                        format(line['sentId']))
+                continue
+
+            state, results = self.get_entity_relation_label(line, len(sentence['tokens']))
+            for key, result in results.items():
+                self.seq_lens[key].append(len(result))
+                if key in self.max_len and len(result) > self.max_len[key]:
+                    state = False
+            if not state:
+                continue
+            sentence.update(results)
+
+            yield sentence
 
     def get_tokens(self, line):
         """This function splits text into tokens

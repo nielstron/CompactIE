@@ -82,7 +82,8 @@ def test(cfg, dataset, ent_model, rel_model):
         all_outputs.extend(batch_outputs)
 
     test_output_file = os.path.join(cfg.save_dir, "output_extractions.txt")
-    print_extractions_allennlp_format(cfg, all_outputs, test_output_file, dataset.vocab)
+    with open(test_output_file, "w") as fout:
+        print_extractions_allennlp_format(cfg, all_outputs, fout, dataset.vocab)
 
 
 def main():
