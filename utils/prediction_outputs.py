@@ -481,7 +481,9 @@ def print_extractions_jsonl_format(cfg, outputs, vocab, fout):
                 "subject": subject_text,
                 "relation": rel_text,
                 "object": object_text,
+                "sentence": sentence,
             })
             if ext not in ext_texts and (rel_text != '' and subject_text != ''):
-                fout.write(ext.encode("utf8"))
+                fout.write(ext)
+                fout.write("\n")
             ext_texts.append(ext)

@@ -7,7 +7,7 @@ import argparse
 import sys
 import threading
 from collections import defaultdict
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from transformers import AutoTokenizer
 
@@ -213,7 +213,7 @@ def run_model(cfg, dataset, ent_model, rel_model, out_file):
     ent_model.eval()
     rel_model.eval()
     for idx, batch in dataset.get_batch('test', cfg.test_batch_size, None):
-        print("{} processed".format(idx+1))
+        logger.info("{} processed".format(idx+1))
         with torch.no_grad():
             batch_outputs = step(cfg, ent_model, rel_model, batch, dataset.vocab, cfg.device)
         all_outputs.extend(batch_outputs)
@@ -235,6 +235,7 @@ class Handler(BaseHTTPRequestHandler):
             logger.info("Reading input")
             for line in body["sentences"]:
                 raw.write(line)
+                raw.write("\n")
 
             logger.info("Answering success")
             self.send_response(200)
@@ -276,12 +277,12 @@ class Handler(BaseHTTPRequestHandler):
             jsonl.seek(0)
             response = f"[{','.join(l for l in jsonl.readlines())}]"
             self.wfile.write(response.encode("utf8"))
-        except:
-            self.send_error(404)
+        except Exception as e:
+            self.send_error(500, message=str(e))
 
 def run_server():
     server_addr = ("0.0.0.0", 39881)
-    server = ThreadingHTTPServer(server_addr, Handler)
+    server = HTTPServer(server_addr, Handler)
     print(
         f"Starting at http://{server_addr[0]}:{server_addr[1]}/api"
     )
