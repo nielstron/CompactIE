@@ -1,3 +1,4 @@
+import json
 from collections import defaultdict
 
 
@@ -389,3 +390,98 @@ def print_predictions_for_relation_decoding(outputs, file_path, vocab):
                     print("Relation-Label-Pred\t{}".format(' '.join(
                         [vocab.get_token_from_index(item, 'ent_rel_id') for item in row[:seq_len]])),
                         file=fout)
+
+def print_extractions_jsonl_format(cfg, outputs, vocab, fout):
+    conj_sentences, conj2sent = read_conjunctions(cfg)
+    ext_texts = []
+    for sent_output in outputs:
+        extractions = {}
+        seq_len = sent_output['seq_len']
+        assert 'tokens' in sent_output
+        tokens = [vocab.get_token_from_index(token, 'tokens') for token in sent_output['tokens'][:seq_len-6]]
+        sentence = ' '.join(tokens)
+        if sentence in conj_sentences:
+            sentence = conj2sent[sentence]
+
+        if 'all_rel_preds' in sent_output:
+            for (span1, span2), rel in sent_output['all_rel_preds'].items():
+                if rel == '' or rel == ' ':
+                    continue
+                if sent_output['all_ent_preds'][span1] == 'Relation':
+                    try:
+                        if span2 in extractions[span1][rel]:
+                            continue
+                    except:
+                        pass
+                    try:
+                        extractions[span1][rel].append(span2)
+                    except:
+                        extractions[span1] = defaultdict(list)
+                        extractions[span1][rel].append(span2)
+                else:
+                    try:
+                        if span1 in extractions[span2][rel]:
+                            continue
+                    except:
+                        pass
+                    try:
+                        extractions[span2][rel].append(span1)
+                    except:
+                        extractions[span2] = defaultdict(list)
+                        extractions[span2][rel].append(span1)
+        to_remove_rel_spans = set()
+        expand_rel = {}
+        to_add = {}
+        for rel_span1, d1 in extractions.items():
+            for rel_span2, d2 in extractions.items():
+                if rel_span1 != rel_span2 and not (rel_span1 in to_remove_rel_spans or rel_span2 in to_remove_rel_spans):
+                    if d1["Subject"] == d2["Subject"] and d1["Object"] == d2["Object"]:
+                        if rel_span1 in to_remove_rel_spans:
+                            to_add[expand_rel[rel_span1] + rel_span2] = d1
+                            to_remove_rel_spans.add(rel_span2)
+                            to_remove_rel_spans.add(expand_rel[rel_span1])
+                            expand_rel[rel_span2] = expand_rel[rel_span1] + rel_span2
+                            expand_rel[rel_span1] = expand_rel[rel_span1] + rel_span2
+                        elif rel_span2 in to_remove_rel_spans:
+                            to_add[expand_rel[rel_span2] + rel_span1] = d1
+                            to_remove_rel_spans.add(rel_span1)
+                            to_remove_rel_spans.add(expand_rel[rel_span2])
+                            expand_rel[rel_span1] = expand_rel[rel_span2] + rel_span1
+                            expand_rel[rel_span2] = expand_rel[rel_span2] + rel_span1
+                        else:
+                            to_add[rel_span1 + rel_span2] = d1
+                            expand_rel[rel_span1] = rel_span1 + rel_span2
+                            expand_rel[rel_span2] = rel_span1 + rel_span2
+                            to_remove_rel_spans.add(rel_span1)
+                            to_remove_rel_spans.add(rel_span2)
+        for tm in to_remove_rel_spans:
+            del extractions[tm]
+        for k, v in to_add.items():
+            extractions[k] = v
+
+        for rel_sp, d in extractions.items():
+            if len(d["Subject"]) > 1:
+                sorted_d_subject = sorted(d["Subject"], key=lambda x: x[0][0])
+                sorted_d_subject = [x[0] for x in sorted_d_subject]
+                subject_text = " ".join([" ".join(tokens[sub_span[0]:sub_span[1]]) for sub_span in sorted_d_subject])
+            elif len(d["Subject"]) == 1:
+                subject_text = " ".join([" ".join(tokens[sub_span[0]:sub_span[1]]) for sub_span in d["Subject"][0]])
+            else:
+                subject_text = ""
+            if len(d["Object"]) > 1:
+                sorted_d_object = sorted(d["Object"], key=lambda x: x[0][0])
+                sorted_d_object = [x[0] for x in sorted_d_object]
+                object_text = " ".join([" ".join(tokens[sub_span[0]:sub_span[1]]) for sub_span in sorted_d_object])
+            elif len(d["Object"]) == 1:
+                object_text = " ".join([" ".join(tokens[sub_span[0]:sub_span[1]]) for sub_span in d["Object"][0]])
+            else:
+                object_text = ""
+            rel_text = " ".join([" ".join(tokens[sub_span[0]:sub_span[1]]) for sub_span in rel_sp]).replace('[unused1]', 'is')
+            ext = json.dumps({
+                "subject": subject_text,
+                "relation": rel_text,
+                "object": object_text,
+            })
+            if ext not in ext_texts and (rel_text != '' and subject_text != ''):
+                fout.write(ext.encode("utf8"))
+            ext_texts.append(ext)
