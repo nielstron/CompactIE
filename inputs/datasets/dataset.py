@@ -1,3 +1,4 @@
+import copy
 import random
 import logging
 
@@ -20,7 +21,7 @@ class Dataset():
 
         self.dataset_name = name
         self.datasets = dict()
-        self.instance_dict = dict(instance_dict)
+        self.instance_dict = copy.deepcopy(instance_dict)
 
     def add_instance(self, name, instance, reader, is_count=False, is_train=False):
         """This function adds a instance to dataset

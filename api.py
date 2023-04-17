@@ -246,9 +246,12 @@ class Handler(BaseHTTPRequestHandler):
             raw.seek(0)
             formatted = io.StringIO()
             process(raw, formatted, tokenizer, ent_rel_file)
+            raw.close()
             formatted.seek(0)
             oie_test_reader = OIE4ReaderForEntRelDecoding(formatted, False, max_len)
 
+            # define instance (data sets)
+            test_instance = Instance(fields)
 
             logger.info("Formatting input")
             oie_dataset = Dataset("OIE4")
@@ -277,6 +280,8 @@ class Handler(BaseHTTPRequestHandler):
             jsonl.seek(0)
             response = f"[{','.join(l for l in jsonl.readlines())}]"
             self.wfile.write(response.encode("utf8"))
+            formatted.close()
+            jsonl.close()
         except Exception as e:
             self.send_error(500, message=str(e))
 
@@ -331,8 +336,6 @@ if __name__ == "__main__":
     counter = defaultdict(lambda: defaultdict(int))
     vocab_ent = Vocabulary()
 
-    # define instance (data sets)
-    test_instance = Instance(fields)
 
     # define dataset reader
     max_len = {'tokens': cfg.max_sent_len, 'wordpiece_tokens': cfg.max_wordpiece_len}

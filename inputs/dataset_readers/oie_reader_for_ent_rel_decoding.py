@@ -1,3 +1,4 @@
+import copy
 import json
 from collections import defaultdict
 import logging
@@ -33,7 +34,7 @@ class OIE4ReaderForEntRelDecoding():
 
         self.file = file
         self.is_test = is_test
-        self.max_len = dict(max_len)
+        self.max_len = copy.deepcopy(max_len)
         self.seq_lens = defaultdict(list)
 
     def __iter__(self):
