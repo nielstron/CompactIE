@@ -171,7 +171,6 @@ def step(cfg, ent_model, rel_model, batch_inputs, main_vocab, device):
 
     batch_inputs["joint_label_matrix"] = torch.LongTensor(batch_inputs["joint_label_matrix"])
     batch_inputs["joint_label_matrix_mask"] = torch.BoolTensor(batch_inputs["joint_label_matrix_mask"])
-
     if device > -1:
         batch_inputs["tokens"] = batch_inputs["tokens"].cuda(device=device, non_blocking=True)
         batch_inputs["entity_label_matrix"] = batch_inputs["entity_label_matrix"].cuda(device=device, non_blocking=True)
@@ -181,6 +180,9 @@ def step(cfg, ent_model, rel_model, batch_inputs, main_vocab, device):
         batch_inputs["wordpiece_tokens"] = batch_inputs["wordpiece_tokens"].cuda(device=device, non_blocking=True)
         batch_inputs["wordpiece_tokens_index"] = batch_inputs["wordpiece_tokens_index"].cuda(device=device, non_blocking=True)
         batch_inputs["wordpiece_segment_ids"] = batch_inputs["wordpiece_segment_ids"].cuda(device=device, non_blocking=True)
+
+        batch_inputs["joint_label_matrix"] = batch_inputs["joint_label_matrix"].cuda(device=device, non_blocking=True)
+        batch_inputs["joint_label_matrix_mask"] = batch_inputs["joint_label_matrix_mask"].cuda(device=device, non_blocking=True)
 
     ent_outputs = ent_model(batch_inputs, rel_model, main_vocab)
     batch_outputs = []
@@ -226,64 +228,64 @@ model_lock = threading.RLock()
 
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
-        try:
-            raw = io.StringIO()
-            content_length = int(self.headers["Content-Length"])
-            content = self.rfile.read(content_length).decode("utf-8")
-            body = json.loads(content)
+        # try:
+        raw = io.StringIO()
+        content_length = int(self.headers["Content-Length"])
+        content = self.rfile.read(content_length).decode("utf-8")
+        body = json.loads(content)
 
-            logger.info("Reading input")
-            for line in body["sentences"]:
-                raw.write(line)
-                raw.write("\n")
+        logger.info("Reading input")
+        for line in body["sentences"]:
+            raw.write(line)
+            raw.write("\n")
 
-            logger.info("Answering success")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
+        logger.info("Answering success")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
 
-            logger.info("Tokenizing input")
-            raw.seek(0)
-            formatted = io.StringIO()
-            process(raw, formatted, tokenizer, ent_rel_file)
-            raw.close()
-            formatted.seek(0)
-            oie_test_reader = OIE4ReaderForEntRelDecoding(formatted, False, max_len)
+        logger.info("Tokenizing input")
+        raw.seek(0)
+        formatted = io.StringIO()
+        process(raw, formatted, tokenizer, ent_rel_file)
+        raw.close()
+        formatted.seek(0)
+        oie_test_reader = OIE4ReaderForEntRelDecoding(formatted, False, max_len)
 
-            # define instance (data sets)
-            test_instance = Instance(fields)
+        # define instance (data sets)
+        test_instance = Instance(fields)
 
-            logger.info("Formatting input")
-            oie_dataset = Dataset("OIE4")
-            oie_dataset.add_instance("test", test_instance, oie_test_reader, is_count=True, is_train=False)
+        logger.info("Formatting input")
+        oie_dataset = Dataset("OIE4")
+        oie_dataset.add_instance("test", test_instance, oie_test_reader, is_count=True, is_train=False)
 
-            min_count = {"tokens": 1}
-            no_pad_namespace = ["ent_rel_id"]
-            no_unk_namespace = ["ent_rel_id"]
-            contain_pad_namespace = {"wordpiece": tokenizer.pad_token}
-            contain_unk_namespace = {"wordpiece": tokenizer.unk_token}
-            oie_dataset.build_dataset(vocab=vocab_ent,
-                                      counter=counter,
-                                      min_count=min_count,
-                                      pretrained_vocab=pretrained_vocab,
-                                      no_pad_namespace=no_pad_namespace,
-                                      no_unk_namespace=no_unk_namespace,
-                                      contain_pad_namespace=contain_pad_namespace,
-                                      contain_unk_namespace=contain_unk_namespace)
-            wo_padding_namespace = ["separate_positions", "span2ent", "span2rel"]
-            oie_dataset.set_wo_padding_namespace(wo_padding_namespace=wo_padding_namespace)
+        min_count = {"tokens": 1}
+        no_pad_namespace = ["ent_rel_id"]
+        no_unk_namespace = ["ent_rel_id"]
+        contain_pad_namespace = {"wordpiece": tokenizer.pad_token}
+        contain_unk_namespace = {"wordpiece": tokenizer.unk_token}
+        oie_dataset.build_dataset(vocab=vocab_ent,
+                                    counter=counter,
+                                    min_count=min_count,
+                                    pretrained_vocab=pretrained_vocab,
+                                    no_pad_namespace=no_pad_namespace,
+                                    no_unk_namespace=no_unk_namespace,
+                                    contain_pad_namespace=contain_pad_namespace,
+                                    contain_unk_namespace=contain_unk_namespace)
+        wo_padding_namespace = ["separate_positions", "span2ent", "span2rel"]
+        oie_dataset.set_wo_padding_namespace(wo_padding_namespace=wo_padding_namespace)
 
-            logger.info("Processing input")
-            jsonl = io.StringIO()
-            with model_lock:
-                run_model(cfg, oie_dataset, ent_model, rel_model, jsonl)
-            jsonl.seek(0)
-            response = f"[{','.join(l for l in jsonl.readlines())}]"
-            self.wfile.write(response.encode("utf8"))
-            formatted.close()
-            jsonl.close()
-        except Exception as e:
-            self.send_error(500, message=str(e))
+        logger.info("Processing input")
+        jsonl = io.StringIO()
+        with model_lock:
+            run_model(cfg, oie_dataset, ent_model, rel_model, jsonl)
+        jsonl.seek(0)
+        response = f"[{','.join(l for l in jsonl.readlines())}]"
+        self.wfile.write(response.encode("utf8"))
+        formatted.close()
+        jsonl.close()
+        # except Exception as e:
+        #     self.send_error(500, message=str(e))
 
 def run_server():
     server_addr = ("0.0.0.0", 39881)

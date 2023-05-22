@@ -270,6 +270,9 @@ class EntRelJointDecoder(nn.Module):
                     "label_ids_mask": torch.LongTensor([[1] * len(argument_indices)]),
                     "wordpiece_segment_ids": torch.LongTensor([wordpiece_segment_ids])
                 }
+                for k in rel_input:
+                    rel_input[k] = rel_input[k].cuda(0)
+
                 output = rel_model(rel_input)
                 output = output['label_preds'][0].cpu().numpy()
                 sorted_output_labels = [output[i] for i in sorted_indices]
@@ -284,12 +287,12 @@ class EntRelJointDecoder(nn.Module):
                     pred_t_label = "None"
                     score = np.mean(entity_score[rel, :, :][:, sorted_arguments[idx], :], axis=(0, 1))
                     score_t = np.mean(entity_score[sorted_arguments[idx], :, :][:, rel, :], axis=(0, 1))
-                    if not (np.max(score[self.rel_label]) < score[self.none_idx]) or \
-                            not (np.max(score_t[self.rel_label]) < score_t[self.none_idx]):
-                        pred = rel_label[np.argmax(score[self.rel_label])].item()
+                    if not (np.max(score[rel_label]) < score[self.none_idx]) or \
+                            not (np.max(score_t[rel_label]) < score_t[self.none_idx]):
+                        pred = rel_label[np.argmax(score[rel_label])].item()
                         pred_label = self.vocab.get_token_from_index(pred, 'ent_rel_id')
 
-                        pred = rel_label[np.argmax(score_t[self.rel_label])].item()
+                        pred = rel_label[np.argmax(score_t[rel_label])].item()
                         pred_t_label = self.vocab.get_token_from_index(pred, 'ent_rel_id')
 
                     # to handle object less extractions
