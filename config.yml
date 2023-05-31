@@ -39,5 +39,5 @@ test_batch_size: 32
 gradient_accumulation_steps: 1
 logging_steps: 32
 validate_every: 4032
-device: -1
+device: 0
 log_file: train.log
