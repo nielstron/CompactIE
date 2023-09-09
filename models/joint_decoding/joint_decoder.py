@@ -270,8 +270,9 @@ class EntRelJointDecoder(nn.Module):
                     "label_ids_mask": torch.LongTensor([[1] * len(argument_indices)]),
                     "wordpiece_segment_ids": torch.LongTensor([wordpiece_segment_ids])
                 }
-                for k in rel_input:
-                    rel_input[k] = rel_input[k].cuda(0)
+                if self.device > -1:
+                    for k in rel_input:
+                        rel_input[k] = rel_input[k].cuda(0)
 
                 output = rel_model(rel_input)
                 output = output['label_preds'][0].cpu().numpy()
